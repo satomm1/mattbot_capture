@@ -1,0 +1,24 @@
+<launch>
+  <arg name="enabled" default="true"/>
+  <arg name="spool_dir" default="/var/robot_capture/spool"/>
+  <arg name="ingest_ip" default="192.168.50.2"/>
+  <arg name="ingest_port" default="8080"/>
+  <arg name="api_key" default=""/>
+  <arg name="jpeg_quality" default="90"/>
+  <arg name="poll_interval_s" default="30"/>
+
+  <group if="$(arg enabled)">
+    <node pkg="mattbot_capture" type="capture_node.py" name="capture_node" output="screen">
+      <param name="spool_dir" value="$(arg spool_dir)"/>
+      <param name="jpeg_quality" value="$(arg jpeg_quality)"/>
+    </node>
+
+    <node pkg="mattbot_capture" type="capture_uploader.py" name="capture_uploader" output="screen">
+      <param name="spool_dir" value="$(arg spool_dir)"/>
+      <param name="ingest_ip" value="$(arg ingest_ip)"/>
+      <param name="ingest_port" value="$(arg ingest_port)"/>
+      <param name="api_key" value="$(arg api_key)"/>
+      <param name="poll_interval_s" value="$(arg poll_interval_s)"/>
+    </node>
+  </group>
+</launch>

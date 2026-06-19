@@ -1,0 +1,7 @@
+string trigger
+string session_id
+float32 sample_hz
+---
+bool success
+string session_id
+string message

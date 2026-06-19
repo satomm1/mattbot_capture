@@ -1,0 +1,5 @@
+string metadata_json
+---
+bool success
+string frame_id
+string message
