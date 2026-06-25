@@ -341,7 +341,7 @@ class CaptureNode:
                     }
                     try:
                         session.append_frame(
-                            ir_jpeg, ir_filename, ros_sec, ros_nsec, None, [], ir_extra
+                            ir_jpeg, ir_filename, ros_sec, ros_nsec, pose, [], ir_extra
                         )
                     except SpoolError as exc:
                         rospy.logwarn("IR companion save failed: %s", exc)
