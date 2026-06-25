@@ -138,6 +138,7 @@ def write_wav_session(
     transcript: str = "",
     sample_rate: int = 32000,
     channels: int = 2,
+    pose: dict | None = None,
 ) -> str:
     """Write a single WAV clip as a finalized upload-ready spool session."""
     session_id = new_session_id()
@@ -157,7 +158,7 @@ def write_wav_session(
     }
     manifest = new_manifest(robot_id, session_id, trigger)
     manifest["frames"].append(
-        new_frame_record(filename, 0, 0, None, [], extra)
+        new_frame_record(filename, 0, 0, pose, [], extra)
     )
     manifest["ended_at"] = utc_now_iso()
     manifest["status"] = STATUS_READY
