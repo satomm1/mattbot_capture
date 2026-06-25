@@ -22,6 +22,12 @@ from capture_utils import (
 from dds_utils import RobotIdError, require_robot_id_int
 
 
+def _mime_type(filename: str) -> str:
+    if filename.lower().endswith(".wav"):
+        return "audio/wav"
+    return "image/jpeg"
+
+
 class CaptureUploader:
     def __init__(self):
         rospy.init_node("capture_uploader", anonymous=False)
@@ -95,7 +101,7 @@ class CaptureUploader:
                     return False
                 handle = open(image_path, "rb")
                 opened.append(handle)
-                files.append(("files", (filename, handle, "image/jpeg")))
+                files.append(("files", (filename, handle, _mime_type(filename))))
 
             with open(manifest_file, "rb") as manifest_handle:
                 multipart = [("manifest", ("manifest.json", manifest_handle, "application/json"))]

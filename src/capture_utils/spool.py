@@ -13,6 +13,7 @@ from .manifest import (
     manifest_path,
     new_frame_record,
     new_manifest,
+    new_session_id,
     session_dir,
     utc_now_iso,
 )
@@ -125,3 +126,40 @@ def remove_session(spool_dir: str, robot_id: int, session_id: str) -> None:
     path = session_dir(spool_dir, robot_id, session_id)
     if os.path.isdir(path):
         shutil.rmtree(path)
+
+
+def write_wav_session(
+    spool_dir: str,
+    robot_id: int,
+    trigger: str,
+    wav_bytes: bytes,
+    *,
+    filename: str = "utterance.wav",
+    transcript: str = "",
+    sample_rate: int = 32000,
+    channels: int = 2,
+) -> str:
+    """Write a single WAV clip as a finalized upload-ready spool session."""
+    session_id = new_session_id()
+    directory = session_dir(spool_dir, robot_id, session_id)
+    manifest_file = manifest_path(spool_dir, robot_id, session_id)
+    os.makedirs(directory, exist_ok=True)
+
+    wav_path = os.path.join(directory, filename)
+    with open(wav_path, "wb") as handle:
+        handle.write(wav_bytes)
+
+    extra = {
+        "content_type": "audio/wav",
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "transcript": transcript,
+    }
+    manifest = new_manifest(robot_id, session_id, trigger)
+    manifest["frames"].append(
+        new_frame_record(filename, 0, 0, None, [], extra)
+    )
+    manifest["ended_at"] = utc_now_iso()
+    manifest["status"] = STATUS_READY
+    _atomic_write_json(manifest_file, manifest)
+    return session_id

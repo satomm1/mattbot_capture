@@ -19,6 +19,7 @@ from .spool import (
     find_ready_sessions,
     load_manifest,
     remove_session,
+    write_wav_session,
 )
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "manifest_path",
     "new_session_id",
     "remove_session",
+    "write_wav_session",
     "robot_spool_root",
     "session_dir",
     "utc_now_iso",

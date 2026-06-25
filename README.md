@@ -69,6 +69,8 @@ rospy.ServiceProxy("/capture/stop_session", CaptureStopSession)()
 
 Each `manifest.json` lists frames with ROS time, wall time, pose, detections, and optional `extra` fields.
 
+**Audio sessions** (wakeword utterances from `mattbot_record`) use the same layout with `utterance.wav` and `trigger: "wakeword"`. Transcript is in `frames[0].extra.transcript`. The uploader sends WAV files as `audio/wav`.
+
 ---
 
 ## Auto-capture
@@ -228,14 +230,14 @@ Returns `200` with body `{"status": "ok"}`. The robot uploader uses this before 
 **Body:** `multipart/form-data`
 
 - `manifest` — JSON file (`manifest.json`)
-- `files` — one or more JPEG parts; filenames must match `frames[].filename`
+- `files` — one or more file parts (JPEG or WAV); filenames must match `frames[].filename`
 
 **Processing:**
 
 1. Parse manifest; require `schema_version`, `status == "ready_for_upload"`.
 2. Verify header robot id matches manifest.
 3. Storage path: `robot_{id}/{YYYY-MM-DD}/{session_id}/` under `STORAGE_ROOT`.
-4. Write JPEGs and manifest; reject path traversal in filenames.
+4. Write image/audio files and manifest; reject path traversal in filenames.
 5. In one DB transaction: upsert `sessions`; insert `captures` from `frames[]`.
 6. Use `ON CONFLICT (session_id, frame_id) DO NOTHING` for idempotent retries.
 
