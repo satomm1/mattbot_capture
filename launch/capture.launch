@@ -17,6 +17,8 @@
     <node pkg="mattbot_capture" type="capture_node.py" name="capture_node" output="screen">
       <param name="spool_dir" value="$(arg spool_dir)"/>
       <param name="jpeg_quality" value="$(arg jpeg_quality)"/>
+      <param name="capture_ir" value="true"/>
+      <param name="ir_image_topic" value="/camera/ir/image_raw"/>
     </node>
 
     <node pkg="mattbot_capture" type="capture_uploader.py" name="capture_uploader" output="screen">

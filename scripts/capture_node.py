@@ -22,6 +22,7 @@ from capture_utils import (
     SpoolError,
     dir_size_bytes,
     frame_filename,
+    ir_frame_filename,
     new_session_id,
     robot_spool_root,
 )
@@ -53,6 +54,8 @@ class CaptureNode:
         self.image_topic = rospy.get_param("~image_topic", "/camera/color/image_raw")
         self.pose_topic = rospy.get_param("~pose_topic", "/amcl_pose")
         self.detections_topic = rospy.get_param("~detections_topic", "/detected_objects")
+        self.capture_ir = bool(rospy.get_param("~capture_ir", True))
+        self.ir_image_topic = rospy.get_param("~ir_image_topic", "/camera/ir/image_raw")
         self.base_frame = rospy.get_param("~base_frame", "base_link")
         self.map_frame = rospy.get_param("~map_frame", "map")
 
@@ -61,6 +64,7 @@ class CaptureNode:
         self._lock = threading.Lock()
         self._bridge = CvBridge()
         self._latest_image = None  # sensor_msgs/Image
+        self._latest_ir_image = None  # sensor_msgs/Image (mono8)
         self._latest_detections = None  # DetectedObjectArray
         self._latest_pose = None  # PoseWithCovarianceStamped
         self._tf_listener = tf.TransformListener()
@@ -68,8 +72,13 @@ class CaptureNode:
         self._session = None  # SessionWriter | None
         self._session_sample_hz = 0.0
         self._sample_timer = None
+        self._ir_warned = False
 
         rospy.Subscriber(self.image_topic, Image, self._image_callback, queue_size=1)
+        # IR optional: camera enable_ir mirrors capture at bringup; RGB-only if disabled
+        if self.capture_ir and self.ir_image_topic:
+            rospy.Subscriber(self.ir_image_topic, Image, self._ir_image_callback, queue_size=1)
+            rospy.Timer(rospy.Duration(5.0), self._ir_startup_check, oneshot=True)
         if self.pose_topic:
             rospy.Subscriber(
                 self.pose_topic, PoseWithCovarianceStamped, self._pose_callback, queue_size=1
@@ -95,6 +104,22 @@ class CaptureNode:
     def _image_callback(self, msg: Image):
         with self._lock:
             self._latest_image = msg
+
+    def _ir_image_callback(self, msg: Image):
+        with self._lock:
+            self._latest_ir_image = msg
+
+    def _ir_startup_check(self, _event):
+        if self._ir_warned:
+            return
+        with self._lock:
+            has_ir = self._latest_ir_image is not None
+        if not has_ir:
+            self._ir_warned = True
+            rospy.logwarn(
+                "capture_ir enabled but no IR frames on %s yet (enable_ir:=capture at bringup?)",
+                self.ir_image_topic,
+            )
 
     def _pose_callback(self, msg: PoseWithCovarianceStamped):
         with self._lock:
@@ -188,6 +213,19 @@ class CaptureNode:
         )
         if not ok:
             return None, "jpeg encode failed"
+        return encoded.tobytes(), None
+
+    def _encode_ir_jpeg(self, msg: Image):
+        # mono8 grayscale -> JPEG (same quality as RGB)
+        try:
+            cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding="mono8")
+        except CvBridgeError as exc:
+            return None, f"cv_bridge error: {exc}"
+        ok, encoded = cv2.imencode(
+            ".jpg", cv_image, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
+        )
+        if not ok:
+            return None, "ir jpeg encode failed"
         return encoded.tobytes(), None
 
     def _lookup_pose(self) -> dict | None:
@@ -285,6 +323,28 @@ class CaptureNode:
             )
         except SpoolError as exc:
             return None, str(exc)
+
+        # Paired IR: latest cached frame at save tick, linked to RGB via rgb_frame_id
+        if self.capture_ir:
+            with self._lock:
+                ir_msg = self._latest_ir_image
+            if ir_msg is not None:
+                ir_jpeg, ir_err = self._encode_ir_jpeg(ir_msg)
+                if ir_err:
+                    rospy.logwarn("IR companion skipped: %s", ir_err)
+                else:
+                    ir_filename = ir_frame_filename(ros_sec, ros_nsec)
+                    ir_extra = {
+                        "modality": "ir",
+                        "content_type": "image/jpeg",
+                        "rgb_frame_id": frame_id,
+                    }
+                    try:
+                        session.append_frame(
+                            ir_jpeg, ir_filename, ros_sec, ros_nsec, None, [], ir_extra
+                        )
+                    except SpoolError as exc:
+                        rospy.logwarn("IR companion save failed: %s", exc)
 
         if one_shot:
             session.finalize()

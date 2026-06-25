@@ -65,9 +65,37 @@ rospy.ServiceProxy("/capture/stop_session", CaptureStopSession)()
 {spool_dir}/robot_{ROBOT_ID}/{session_id}/
   manifest.json
   frame_{sec}_{nsec}.jpg
+  frame_{sec}_{nsec}_ir.jpg   # when IR enabled (capture:=true + enable_ir on camera)
 ```
 
 Each `manifest.json` lists frames with ROS time, wall time, pose, detections, and optional `extra` fields.
+
+### IR pairing (Astra camera)
+
+When `capture:=true` at bringup, `enable_ir` is set on the camera driver (`astra.launch` or `astra_pro_plus.launch`) and `capture_node` saves a companion IR JPEG for each RGB frame (latest cached IR at save tick — not hardware-synced).
+
+| File | `extra` |
+|------|---------|
+| `frame_{sec}_{nsec}.jpg` | pose, detections (unchanged) |
+| `frame_{sec}_{nsec}_ir.jpg` | `modality: "ir"`, `rgb_frame_id`, `content_type: "image/jpeg"` |
+
+Example IR frame entry:
+
+```json
+{
+  "frame_id": "frame_1719240645_123456789_ir",
+  "filename": "frame_1719240645_123456789_ir.jpg",
+  "ros_time": {"sec": 1719240645, "nsec": 123456789},
+  "detections": [],
+  "extra": {
+    "modality": "ir",
+    "content_type": "image/jpeg",
+    "rgb_frame_id": "frame_1719240645_123456789"
+  }
+}
+```
+
+Central ingest: pair IR to RGB via `extra.rgb_frame_id` or matching `ros_time` + `_ir.jpg` suffix. Sessions may contain 2× JPEG frames per capture tick.
 
 **Audio sessions** (wakeword utterances from `mattbot_record`) use the same layout with `utterance.wav` and `trigger: "wakeword"`. Transcript is in `frames[0].extra.transcript`. The uploader sends WAV files as `audio/wav`.
 
@@ -129,6 +157,8 @@ Manual `/capture/*` services remain available. If a manual session is already ac
 | `~jpeg_quality` | `90` | JPEG quality |
 | `~max_spool_bytes` | `5368709120` | Refuse saves when spool exceeds this |
 | `~image_topic` | `/camera/color/image_raw` | Camera input |
+| `~capture_ir` | `true` | Save IR companion JPEG when IR messages available |
+| `~ir_image_topic` | `/camera/ir/image_raw` | IR input (requires `enable_ir:=capture` at bringup) |
 | `~pose_topic` | `/amcl_pose` | Pose fallback if TF unavailable |
 | `~detections_topic` | `/detected_objects` | Latest detections cached on save |
 | `~map_frame` / `~base_frame` | `map` / `base_link` | TF lookup for pose |
@@ -240,6 +270,8 @@ Returns `200` with body `{"status": "ok"}`. The robot uploader uses this before 
 4. Write image/audio files and manifest; reject path traversal in filenames.
 5. In one DB transaction: upsert `sessions`; insert `captures` from `frames[]`.
 6. Use `ON CONFLICT (session_id, frame_id) DO NOTHING` for idempotent retries.
+
+**IR frames:** identify via `filename` suffix `_ir.jpg` or `frames[].extra.modality == "ir"`. Link to RGB via `extra.rgb_frame_id`. Store both under the same session directory.
 
 **Response `201`:**
 

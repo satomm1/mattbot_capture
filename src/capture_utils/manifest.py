@@ -37,6 +37,11 @@ def frame_filename(ros_sec: int, ros_nsec: int) -> str:
     return f"frame_{ros_sec}_{ros_nsec}.jpg"
 
 
+def ir_frame_filename(ros_sec: int, ros_nsec: int) -> str:
+    # _ir.jpg suffix pairs with RGB frame_{sec}_{nsec}.jpg for central ingest
+    return f"frame_{ros_sec}_{ros_nsec}_ir.jpg"
+
+
 def frame_id_from_filename(filename: str) -> str:
     # frame_123_456.jpg -> frame_123_456
     base = os.path.basename(filename)
