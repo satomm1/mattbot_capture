@@ -8,6 +8,10 @@
   <arg name="poll_interval_s" default="30"/>
   <arg name="auto_capture" default="true"/>
   <arg name="nav_sample_hz" default="0.5"/>
+  <arg name="person_capture" default="true"/>
+  <arg name="person_sample_hz" default="1.0"/>
+  <arg name="person_tail_seconds" default="5.0"/>
+  <arg name="person_min_confidence" default="0.5"/>
 
   <group if="$(arg enabled)">
     <node pkg="mattbot_capture" type="capture_node.py" name="capture_node" output="screen">
@@ -26,6 +30,10 @@
     <node pkg="mattbot_capture" type="capture_auto_trigger.py" name="capture_auto_trigger" output="screen">
       <param name="auto_capture_enabled" value="$(arg auto_capture)"/>
       <param name="nav_sample_hz" value="$(arg nav_sample_hz)"/>
+      <param name="person_capture_enabled" value="$(arg person_capture)"/>
+      <param name="person_sample_hz" value="$(arg person_sample_hz)"/>
+      <param name="person_tail_seconds" value="$(arg person_tail_seconds)"/>
+      <param name="person_min_confidence" value="$(arg person_min_confidence)"/>
       <rosparam param="nav_capture_modes">[3, 4, 5, 6, 7, 10, 11]</rosparam>
     </node>
   </group>

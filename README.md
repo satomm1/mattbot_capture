@@ -73,17 +73,33 @@ Each `manifest.json` lists frames with ROS time, wall time, pose, detections, an
 
 ## Auto-capture
 
-When capture is enabled, `capture_auto_trigger` watches `/robot_mode` from `localize_and_navigate.py` and starts a capture session for the duration of each navigation mission.
+When capture is enabled, `capture_auto_trigger` runs two independent session triggers:
 
-- **Start:** first transition into a capture-active mode (default: ALIGN, TRACK, PARK_POSE, PARK_HEADING, BACKING, STOPPED_FOR_PERSON, STOPPED_FOR_AGENT — modes 3, 4, 5, 6, 7, 10, 11)
+### Navigation
+
+Watches `/robot_mode` from `localize_and_navigate.py` and records for each mission.
+
+- **Start:** first transition into a capture-active mode (default: 3, 4, 5, 6, 7, 10, 11)
 - **Stop:** transition to any other mode (e.g. IDLE)
-- **Sample rate:** 0.5 Hz by default (`nav_sample_hz` launch arg)
-- **Disable auto-trigger only:** `roslaunch mattbot_capture capture.launch auto_capture:=false`
-- **Disable all capture:** `enabled:=false` or bringup `capture:=false`
+- **Sample rate:** 0.5 Hz (`nav_sample_hz`)
 
-Manual `/capture/*` services remain available. If a manual session is already active when navigation starts, auto-capture skips start and logs once.
+### Person detection
 
-To add more trigger conditions later, extend `capture_auto_trigger.py` — OR additional bool flags into `should_capture` in `_sync_capture_state()`.
+Watches `/detected_objects` from `mattbot_image_detection` while the robot is **not** navigating.
+
+- **Start:** first frame with `class_name=="person"` above `person_min_confidence`
+- **Continue:** while person remains visible
+- **Tail:** keep recording `person_tail_seconds` (default 5s) after person disappears
+- **Stop:** tail expires (re-detect during tail cancels stop and continues)
+- **Sample rate:** 1.0 Hz (`person_sample_hz`)
+
+Nav takes priority: an active person session is stopped when a navigation mission starts.
+
+**Frame sync caveat:** `capture_node` saves the latest camera frame and latest detections independently; bboxes in metadata may not pixel-align with every JPEG. Continuous session sampling mitigates this.
+
+**Disable:** `auto_capture:=false` (all auto triggers), `person_capture:=false` (person only), or `capture:=false` in bringup (entire stack).
+
+Manual `/capture/*` services remain available. If a manual session is already active, auto-capture skips start and logs once.
 
 ### capture_auto_trigger
 
@@ -93,6 +109,11 @@ To add more trigger conditions later, extend `capture_auto_trigger.py` — OR ad
 | `~nav_sample_hz` | `0.5` | Frame rate during navigation sessions |
 | `~nav_capture_modes` | `[3,4,5,6,7,10,11]` | `/robot_mode` values that trigger capture |
 | `~robot_mode_topic` | `/robot_mode` | Navigation state topic |
+| `~person_capture_enabled` | `true` | Enable person-detection sessions |
+| `~person_sample_hz` | `1.0` | Frame rate during person sessions |
+| `~person_tail_seconds` | `5.0` | Record after last person detection |
+| `~person_min_confidence` | `0.6` | Min detection `probability` for person |
+| `~detections_topic` | `/detected_objects` | Detection input topic |
 
 ---
 
