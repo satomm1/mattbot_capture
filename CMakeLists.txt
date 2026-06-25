@@ -30,6 +30,7 @@ catkin_package(
 catkin_install_python(PROGRAMS
   scripts/capture_node.py
   scripts/capture_uploader.py
+  scripts/capture_auto_trigger.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

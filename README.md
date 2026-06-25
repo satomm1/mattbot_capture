@@ -75,6 +75,31 @@ Each `manifest.json` lists frames with ROS time, wall time, pose, detections, an
 
 ---
 
+## Auto-capture
+
+When capture is enabled, `capture_auto_trigger` watches `/robot_mode` from `localize_and_navigate.py` and starts a capture session for the duration of each navigation mission.
+
+- **Start:** first transition into a capture-active mode (default: ALIGN, TRACK, PARK_POSE, PARK_HEADING, BACKING, STOPPED_FOR_PERSON, STOPPED_FOR_AGENT — modes 3, 4, 5, 6, 7, 10, 11)
+- **Stop:** transition to any other mode (e.g. IDLE)
+- **Sample rate:** 0.5 Hz by default (`nav_sample_hz` launch arg)
+- **Disable auto-trigger only:** `roslaunch mattbot_capture capture.launch auto_capture:=false`
+- **Disable all capture:** `enabled:=false` or bringup `capture:=false`
+
+Manual `/capture/*` services remain available. If a manual session is already active when navigation starts, auto-capture skips start and logs once.
+
+To add more trigger conditions later, extend `capture_auto_trigger.py` — OR additional bool flags into `should_capture` in `_sync_capture_state()`.
+
+### capture_auto_trigger
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `~auto_capture_enabled` | `true` | Enable automatic session start/stop |
+| `~nav_sample_hz` | `0.5` | Frame rate during navigation sessions |
+| `~nav_capture_modes` | `[3,4,5,6,7,10,11]` | `/robot_mode` values that trigger capture |
+| `~robot_mode_topic` | `/robot_mode` | Navigation state topic |
+
+---
+
 ## Parameters
 
 ### capture_node
