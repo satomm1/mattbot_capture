@@ -47,7 +47,7 @@ class CaptureNode:
             rospy.logfatal("%s", exc)
             sys.exit(1)
 
-        self.spool_dir = rospy.get_param("~spool_dir", "/var/robot_capture/spool")
+        self.spool_dir = rospy.get_param("~spool_dir", "/workspace/catkin_ws/data/capture_spool")
         self.jpeg_quality = int(rospy.get_param("~jpeg_quality", 90))
         self.max_spool_bytes = int(rospy.get_param("~max_spool_bytes", 5 * 1024 ** 3))
         self.image_topic = rospy.get_param("~image_topic", "/camera/color/image_raw")

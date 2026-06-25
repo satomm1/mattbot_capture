@@ -32,7 +32,7 @@ class CaptureUploader:
             rospy.logfatal("%s", exc)
             sys.exit(1)
 
-        self.spool_dir = rospy.get_param("~spool_dir", "/var/robot_capture/spool")
+        self.spool_dir = rospy.get_param("~spool_dir", "/workspace/catkin_ws/data/capture_spool")
         ingest_ip = rospy.get_param("~ingest_ip", "192.168.50.2")
         ingest_port = int(rospy.get_param("~ingest_port", 8080))
         ingest_scheme = rospy.get_param("~ingest_scheme", "http")

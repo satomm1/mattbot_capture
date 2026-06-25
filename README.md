@@ -9,10 +9,6 @@ Robot-side image capture with a local spool and background upload queue. Callers
 ## Quick start
 
 ```bash
-# Writable spool directory (once per machine)
-sudo mkdir -p /var/robot_capture/spool
-sudo chown "$USER:$USER" /var/robot_capture/spool
-
 # Standalone
 roslaunch mattbot_capture capture.launch
 
@@ -106,7 +102,7 @@ To add more trigger conditions later, extend `capture_auto_trigger.py` — OR ad
 
 | Param | Default | Description |
 |-------|---------|-------------|
-| `~spool_dir` | `/var/robot_capture/spool` | Local buffer root |
+| `~spool_dir` | `/workspace/catkin_ws/data/capture_spool` | Local buffer root (persists via catkin_ws bind mount in Docker) |
 | `~jpeg_quality` | `90` | JPEG quality |
 | `~max_spool_bytes` | `5368709120` | Refuse saves when spool exceeds this |
 | `~image_topic` | `/camera/color/image_raw` | Camera input |
