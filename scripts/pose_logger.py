@@ -182,8 +182,10 @@ class PoseLogger(TransformMixin):
         if self._timer is not None:
             self._timer.shutdown()
         if self._writer is not None:
-            self._writer.close()
+            row_count = self._writer.close()
             self._writer = None
+            if row_count > 0:
+                rospy.loginfo("pose chunk sealed locally (%d rows); upload deferred", row_count)
 
 
 if __name__ == "__main__":

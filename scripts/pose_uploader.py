@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 
 import rospy
 import requests
@@ -44,6 +43,9 @@ class PoseUploader:
         self.check_health = bool(rospy.get_param("~check_health", True))
 
         self._backoff_s = self.poll_interval_s
+        self._upload_enabled = True
+
+        rospy.on_shutdown(self._on_shutdown)
 
         rospy.loginfo(
             "pose_uploader ready robot_id=%s ingest=%s spool=%s",
@@ -51,6 +53,10 @@ class PoseUploader:
             self.ingest_url,
             self.pose_spool_dir,
         )
+
+    def _on_shutdown(self):
+        # Seal-only on logger side; do not start uploads while roslaunch is tearing down.
+        self._upload_enabled = False
 
     def _headers(self) -> dict:
         headers = {"X-Robot-Id": str(self.robot_id)}
@@ -68,6 +74,9 @@ class PoseUploader:
             return False
 
     def _upload_chunk(self, chunk_id: str) -> bool:
+        if not self._upload_enabled or rospy.is_shutdown():
+            return False
+
         meta_path, sqlite_path = pose_chunk_paths(self.pose_spool_dir, self.robot_id, chunk_id)
         try:
             meta = load_pose_chunk_meta(self.pose_spool_dir, self.robot_id, chunk_id)
@@ -118,28 +127,34 @@ class PoseUploader:
         return True
 
     def spin(self):
-        while not rospy.is_shutdown():
+        while not rospy.is_shutdown() and self._upload_enabled:
             if not self._central_reachable():
                 rospy.logwarn_throttle(60.0, "central ingest unreachable; will retry")
-                time.sleep(self._backoff_s)
+                if rospy.sleep(self._backoff_s):
+                    break
                 self._backoff_s = min(self.retry_max_s, self._backoff_s * 2.0)
                 continue
 
             self._backoff_s = self.poll_interval_s
             chunks = find_ready_pose_chunks(self.pose_spool_dir, self.robot_id)
             if not chunks:
-                time.sleep(self.poll_interval_s)
+                if rospy.sleep(self.poll_interval_s):
+                    break
                 continue
 
             for chunk_id in chunks:
-                if rospy.is_shutdown():
+                if rospy.is_shutdown() or not self._upload_enabled:
                     break
                 if self._upload_chunk(chunk_id):
                     continue
-                time.sleep(min(self._backoff_s, self.poll_interval_s))
+                if rospy.sleep(min(self._backoff_s, self.poll_interval_s)):
+                    break
                 self._backoff_s = min(self.retry_max_s, self._backoff_s * 2.0)
 
-            time.sleep(self.poll_interval_s)
+            if rospy.is_shutdown() or not self._upload_enabled:
+                break
+            if rospy.sleep(self.poll_interval_s):
+                break
 
 
 if __name__ == "__main__":
