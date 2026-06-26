@@ -1,6 +1,6 @@
 # mattbot_capture
 
-Robot-side image capture with a local spool and background upload queue. Callers save frames on demand via ROS services; a separate uploader POSTs completed sessions to a central ingest service.
+Robot-side image capture with a local spool and background upload queue, plus continuous pose logging to SQLite chunks. Callers save frames on demand via ROS services; uploaders POST completed sessions and pose chunks to a central ingest service.
 
 **Prerequisite:** set `ROBOT_ID` before launch (same as `mattbot_dds`).
 
@@ -177,6 +177,59 @@ Manual `/capture/*` services remain available. If a manual session is already ac
 
 ---
 
+## Pose logging
+
+When `capture:=true`, `pose_logger` and `pose_uploader` run alongside the image capture stack. Pose is read locally from TF (`map` → `base_link`, `/amcl_pose` fallback) — not from DDS — so trajectories survive central server downtime.
+
+### Sampling
+
+| Condition | Rate |
+|-----------|------|
+| Moving (`robot_mode != 0`) | **2 Hz** |
+| Idle (`robot_mode == 0`) | ~1/min |
+| Any state | Force sample if gap exceeds 30 s |
+| Significant motion while throttled | Immediate if moved > 0.1 m or turned > ~5° |
+
+Invalid TF periods are stored with `valid=0` so localization gaps are visible.
+
+### Pose spool layout
+
+```
+{pose_spool_dir}/robot_{ROBOT_ID}/
+  active.sqlite
+  active.meta.json
+  chunk_2025-06-26T14-00-00Z.sqlite
+  chunk_2025-06-26T14-00-00Z.meta.json
+```
+
+Chunks rotate hourly (default). Sealed chunks have `status: "ready_for_upload"`. `pose_uploader` POSTs them to `/api/v1/pose_upload` when the central ingest service is reachable.
+
+Each SQLite row: `wall_time`, `ros_time`, local `x/y/theta/frame`, optional fleet `ref_x/ref_y/ref_theta`, `is_static`, `valid`.
+
+### pose_logger parameters
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `~pose_spool_dir` | `/workspace/catkin_ws/data/pose_spool` | Local buffer root |
+| `~moving_sample_hz` | `2.0` | Sample rate when moving |
+| `~static_sample_hz` | `0.0167` | Sample rate when idle (~1/min) |
+| `~max_gap_s` | `30.0` | Force sample if exceeded |
+| `~min_distance_m` | `0.1` | Immediate save on motion |
+| `~min_angle_rad` | `0.09` | Immediate save on rotation (~5 deg) |
+| `~chunk_hours` | `1.0` | Rotate SQLite chunk |
+| `~max_pose_spool_bytes` | `5368709120` | Spool cap (512 MB) |
+| `~map_frame` / `~base_frame` | `map` / `base_link` | TF frames |
+| `~pose_topic` | `/amcl_pose` | Pose fallback |
+| `~robot_mode_topic` | `/robot_mode` | Static detection |
+
+### pose_uploader parameters
+
+Same ingest connection params as `capture_uploader` (`~ingest_ip`, `~ingest_port`, `~api_key`, `~poll_interval_s`, etc.). Upload path is fixed at `/api/v1/pose_upload`.
+
+Pose trajectories complement image capture: join on the central server by matching `wall_time` to frame poses in capture manifests.
+
+---
+
 ## Central machine specification
 
 Implement separately on a central PC/NAS. Robots never connect to the database directly.
@@ -280,6 +333,54 @@ Returns `200` with body `{"status": "ok"}`. The robot uploader uses this before 
 ```
 
 **Errors:** `400` bad manifest, `401` auth, `409` file mismatch, `507` disk full.
+
+#### `POST /api/v1/pose_upload`
+
+**Headers:** same as image upload (`X-Robot-Id`, optional `X-Api-Key`).
+
+**Body:** `multipart/form-data`
+
+- `meta` — JSON file (`chunk_*.meta.json`)
+- `chunk` — SQLite file (`chunk_*.sqlite`)
+
+**Processing:**
+
+1. Parse meta; require `schema_version`, `status == "ready_for_upload"`.
+2. Verify header robot id matches meta.
+3. Read rows from SQLite `poses` table; bulk-insert into `robot_poses`.
+4. Use `ON CONFLICT (robot_id, wall_time) DO NOTHING` for idempotent retries.
+
+**Response `201`:**
+
+```json
+{"ok": true, "chunk_id": "chunk_2025-06-26T14-00-00Z", "rows_accepted": 7200}
+```
+
+### PostgreSQL schema (pose chunks)
+
+```sql
+CREATE TABLE robot_poses (
+  id            BIGSERIAL PRIMARY KEY,
+  robot_id      INTEGER NOT NULL,
+  wall_time     TIMESTAMPTZ NOT NULL,
+  ros_time_sec  BIGINT,
+  ros_time_nsec INTEGER,
+  x             DOUBLE PRECISION,
+  y             DOUBLE PRECISION,
+  theta         DOUBLE PRECISION,
+  frame         TEXT,
+  ref_x         DOUBLE PRECISION,
+  ref_y         DOUBLE PRECISION,
+  ref_theta     DOUBLE PRECISION,
+  is_static     BOOLEAN NOT NULL,
+  valid         BOOLEAN NOT NULL,
+  chunk_id      TEXT,
+  uploaded_at   TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (robot_id, wall_time)
+);
+
+CREATE INDEX idx_robot_poses_robot_time ON robot_poses (robot_id, wall_time);
+```
 
 ### Deployment sketch
 

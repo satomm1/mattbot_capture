@@ -12,6 +12,10 @@
   <arg name="person_sample_hz" default="1.0"/>
   <arg name="person_tail_seconds" default="5.0"/>
   <arg name="person_min_confidence" default="0.5"/>
+  <arg name="pose_spool_dir" default="/workspace/catkin_ws/data/pose_spool"/>
+  <arg name="moving_sample_hz" default="2.0"/>
+  <arg name="static_sample_hz" default="0.0167"/>
+  <arg name="chunk_hours" default="1.0"/>
 
   <group if="$(arg enabled)">
     <node pkg="mattbot_capture" type="capture_node.py" name="capture_node" output="screen">
@@ -37,6 +41,21 @@
       <param name="person_tail_seconds" value="$(arg person_tail_seconds)"/>
       <param name="person_min_confidence" value="$(arg person_min_confidence)"/>
       <rosparam param="nav_capture_modes">[3, 4, 5, 6, 7, 10, 11]</rosparam>
+    </node>
+
+    <node pkg="mattbot_capture" type="pose_logger.py" name="pose_logger" output="screen">
+      <param name="pose_spool_dir" value="$(arg pose_spool_dir)"/>
+      <param name="moving_sample_hz" value="$(arg moving_sample_hz)"/>
+      <param name="static_sample_hz" value="$(arg static_sample_hz)"/>
+      <param name="chunk_hours" value="$(arg chunk_hours)"/>
+    </node>
+
+    <node pkg="mattbot_capture" type="pose_uploader.py" name="pose_uploader" output="screen">
+      <param name="pose_spool_dir" value="$(arg pose_spool_dir)"/>
+      <param name="ingest_ip" value="$(arg ingest_ip)"/>
+      <param name="ingest_port" value="$(arg ingest_port)"/>
+      <param name="api_key" value="$(arg api_key)"/>
+      <param name="poll_interval_s" value="$(arg poll_interval_s)"/>
     </node>
   </group>
 </launch>

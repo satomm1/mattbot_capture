@@ -1,4 +1,4 @@
-from .ingest import ingest_health_url, ingest_upload_url
+from .ingest import ingest_health_url, ingest_pose_upload_url, ingest_upload_url
 from .manifest import (
     SCHEMA_VERSION,
     STATUS_READY,
@@ -11,6 +11,14 @@ from .manifest import (
     robot_spool_root,
     session_dir,
     utc_now_iso,
+)
+from .pose_spool import (
+    PoseChunkWriter,
+    PoseSpoolError,
+    find_ready_pose_chunks,
+    load_pose_chunk_meta,
+    pose_chunk_paths,
+    remove_pose_chunk,
 )
 from .spool import (
     SessionWriter,
@@ -25,6 +33,7 @@ from .spool import (
 
 __all__ = [
     "ingest_health_url",
+    "ingest_pose_upload_url",
     "ingest_upload_url",
     "SCHEMA_VERSION",
     "STATUS_READY",
@@ -32,14 +41,20 @@ __all__ = [
     "SessionWriter",
     "SpoolError",
     "SpoolFullError",
+    "PoseChunkWriter",
+    "PoseSpoolError",
     "dir_size_bytes",
     "find_ready_sessions",
+    "find_ready_pose_chunks",
     "frame_filename",
     "frame_id_from_filename",
     "ir_frame_filename",
     "load_manifest",
+    "load_pose_chunk_meta",
     "manifest_path",
     "new_session_id",
+    "pose_chunk_paths",
+    "remove_pose_chunk",
     "remove_session",
     "write_wav_session",
     "robot_spool_root",

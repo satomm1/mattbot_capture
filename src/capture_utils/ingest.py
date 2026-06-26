@@ -1,6 +1,7 @@
 """Build central ingest URLs from host and port."""
 
 UPLOAD_PATH = "/api/v1/upload"
+POSE_UPLOAD_PATH = "/api/v1/pose_upload"
 HEALTH_PATH = "/health"
 
 
@@ -17,3 +18,7 @@ def ingest_upload_url(host: str, port: int, scheme: str = "http") -> str:
 
 def ingest_health_url(host: str, port: int, scheme: str = "http") -> str:
     return ingest_base_url(host, port, scheme) + HEALTH_PATH
+
+
+def ingest_pose_upload_url(host: str, port: int, scheme: str = "http") -> str:
+    return ingest_base_url(host, port, scheme) + POSE_UPLOAD_PATH

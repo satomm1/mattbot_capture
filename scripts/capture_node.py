@@ -15,7 +15,7 @@ from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from sensor_msgs.msg import Image
 from std_msgs.msg import Empty
-from tf.transformations import euler_from_quaternion
+from capture_utils.pose_lookup import lookup_pose
 
 from capture_utils import (
     SessionWriter,
@@ -229,25 +229,9 @@ class CaptureNode:
         return encoded.tobytes(), None
 
     def _lookup_pose(self) -> dict | None:
-        try:
-            (pos, rot) = self._tf_listener.lookupTransform(
-                self.map_frame, self.base_frame, rospy.Time(0)
-            )
-            _roll, _pitch, yaw = euler_from_quaternion(rot)
-            return {"x": pos[0], "y": pos[1], "theta": yaw, "frame": self.map_frame}
-        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-            pass
-
         with self._lock:
             pose_msg = self._latest_pose
-        if pose_msg is None:
-            return None
-
-        p = pose_msg.pose.pose.position
-        q = pose_msg.pose.pose.orientation
-        _roll, _pitch, yaw = euler_from_quaternion([q.x, q.y, q.z, q.w])
-        frame = pose_msg.header.frame_id or self.map_frame
-        return {"x": p.x, "y": p.y, "theta": yaw, "frame": frame}
+        return lookup_pose(self._tf_listener, self.map_frame, self.base_frame, pose_msg)
 
     def _detections_to_list(self) -> list:
         with self._lock:

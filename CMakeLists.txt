@@ -31,6 +31,8 @@ catkin_install_python(PROGRAMS
   scripts/capture_node.py
   scripts/capture_uploader.py
   scripts/capture_auto_trigger.py
+  scripts/pose_logger.py
+  scripts/pose_uploader.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
