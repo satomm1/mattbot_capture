@@ -65,7 +65,8 @@ rospy.ServiceProxy("/capture/stop_session", CaptureStopSession)()
 {spool_dir}/robot_{ROBOT_ID}/{session_id}/
   manifest.json
   frame_{sec}_{nsec}.jpg
-  frame_{sec}_{nsec}_ir.jpg   # when IR enabled (capture:=true + enable_ir on camera)
+  frame_{sec}_{nsec}_ir.jpg      # when IR enabled (capture:=true + enable_ir on camera)
+  frame_{sec}_{nsec}_depth.png   # when capture_depth enabled (depth always on for OSOD)
 ```
 
 Each `manifest.json` lists frames with ROS time, wall time, pose, detections, and optional `extra` fields.
@@ -95,7 +96,35 @@ Example IR frame entry:
 }
 ```
 
-Central ingest: pair IR to RGB via `extra.rgb_frame_id` or matching `ros_time` + `_ir.jpg` suffix. Sessions may contain 2× JPEG frames per capture tick.
+Central ingest: pair IR to RGB via `extra.rgb_frame_id` or matching `ros_time` + `_ir.jpg` suffix.
+
+### Depth pairing
+
+Depth is always published for OSOD (`enable_depth` stays true on the camera). When `capture_depth` is enabled, `capture_node` saves a companion **lossless PNG** per RGB frame (latest cached depth at save tick — not hardware-synced). Values are uint16 millimeters (`16UC1`).
+
+| File | `extra` |
+|------|---------|
+| `frame_{sec}_{nsec}_depth.png` | `modality: "depth"`, `rgb_frame_id`, `content_type: "image/png"`, `depth_encoding`, `depth_units` |
+
+Example depth frame entry:
+
+```json
+{
+  "frame_id": "frame_1719240645_123456789_depth",
+  "filename": "frame_1719240645_123456789_depth.png",
+  "ros_time": {"sec": 1719240645, "nsec": 123456789},
+  "detections": [],
+  "extra": {
+    "modality": "depth",
+    "content_type": "image/png",
+    "depth_encoding": "16UC1",
+    "depth_units": "millimeters",
+    "rgb_frame_id": "frame_1719240645_123456789"
+  }
+}
+```
+
+Central ingest: pair depth to RGB via `extra.rgb_frame_id` or `_depth.png` suffix. Sessions may contain up to **3 files per capture tick** (RGB + IR + depth).
 
 **Audio sessions** (wakeword utterances from `mattbot_record`) use the same layout with `utterance.wav` and `trigger: "wakeword"`. Transcript is in `frames[0].extra.transcript`. The uploader sends WAV files as `audio/wav`.
 
@@ -159,6 +188,8 @@ Manual `/capture/*` services remain available. If a manual session is already ac
 | `~image_topic` | `/camera/color/image_raw` | Camera input |
 | `~capture_ir` | `true` | Save IR companion JPEG when IR messages available |
 | `~ir_image_topic` | `/camera/ir/image_raw` | IR input (requires `enable_ir:=capture` at bringup) |
+| `~capture_depth` | `true` | Save depth companion PNG when depth messages available |
+| `~depth_image_topic` | `/camera/depth/image_raw` | Depth input (always on for OSOD; no bringup gating) |
 | `~pose_topic` | `/amcl_pose` | Pose fallback if TF unavailable |
 | `~detections_topic` | `/detected_objects` | Latest detections cached on save |
 | `~map_frame` / `~base_frame` | `map` / `base_link` | TF lookup for pose |
@@ -325,6 +356,8 @@ Returns `200` with body `{"status": "ok"}`. The robot uploader uses this before 
 6. Use `ON CONFLICT (session_id, frame_id) DO NOTHING` for idempotent retries.
 
 **IR frames:** identify via `filename` suffix `_ir.jpg` or `frames[].extra.modality == "ir"`. Link to RGB via `extra.rgb_frame_id`. Store both under the same session directory.
+
+**Depth frames:** identify via `_depth.png` suffix or `frames[].extra.modality == "depth"`. Link to RGB via `extra.rgb_frame_id`. PNG holds uint16 depth in millimeters (`16UC1`); upload as `image/png`.
 
 **Response `201`:**
 

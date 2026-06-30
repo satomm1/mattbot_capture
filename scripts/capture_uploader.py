@@ -23,8 +23,11 @@ from dds_utils import RobotIdError, require_robot_id_int
 
 
 def _mime_type(filename: str) -> str:
-    if filename.lower().endswith(".wav"):
+    lower = filename.lower()
+    if lower.endswith(".wav"):
         return "audio/wav"
+    if lower.endswith(".png"):
+        return "image/png"
     return "image/jpeg"
 
 

@@ -19,6 +19,7 @@ from mattbot_image_detection.msg import DetectedObjectArray
 #   3=ALIGN  4=TRACK  5=PARK_POSE  6=PARK_HEADING  7=BACKING
 #   10=STOPPED_FOR_PERSON  11=STOPPED_FOR_AGENT
 # Excluded: 0=IDLE, 1/2=LOCALIZING*, 8=WAITING_FOR_INIT, 9=RELOCALIZING,
+#           13=POSE_REFINE, 14=RECOVERY_VALIDATE,
 #           12=MULTIAGENT_CONTROL_COMPUTING (robot held still for fleet timing)
 
 

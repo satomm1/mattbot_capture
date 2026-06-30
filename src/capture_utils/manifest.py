@@ -42,11 +42,17 @@ def ir_frame_filename(ros_sec: int, ros_nsec: int) -> str:
     return f"frame_{ros_sec}_{ros_nsec}_ir.jpg"
 
 
+def depth_frame_filename(ros_sec: int, ros_nsec: int) -> str:
+    # _depth.png suffix pairs with RGB for central ingest (16UC1 mm, lossless)
+    return f"frame_{ros_sec}_{ros_nsec}_depth.png"
+
+
 def frame_id_from_filename(filename: str) -> str:
-    # frame_123_456.jpg -> frame_123_456
+    # frame_123_456.jpg -> frame_123_456; frame_123_456_depth.png -> frame_123_456_depth
     base = os.path.basename(filename)
-    if base.endswith(".jpg"):
-        return base[:-4]
+    for suffix in (".jpg", ".png"):
+        if base.endswith(suffix):
+            return base[: -len(suffix)]
     return base
 
 
