@@ -16,6 +16,7 @@ from capture_utils.detections import detected_objects_to_list
 from capture_utils.manifest import utc_now_iso
 from capture_utils.pose_lookup import lookup_pose
 from capture_utils.detection_spool import DetectionChunkWriter, detection_spool_root
+from capture_utils.localized_gate import LocalizedGate
 from capture_utils.spool import dir_size_bytes
 from dds_utils import RobotIdError, require_robot_id_int
 from mattbot_image_detection.msg import DetectedObjectArray
@@ -44,8 +45,12 @@ class DetectionLogger:
         self.detections_topic = rospy.get_param("~detections_topic", "/detected_objects")
         self.min_confidence = float(rospy.get_param("~min_confidence", 0.0))
         self.sample_hz = float(rospy.get_param("~sample_hz", 0.0))
+        self.localized_topic = rospy.get_param("~localized_topic", "/localized")
+        self.require_localized = bool(rospy.get_param("~require_localized", True))
 
         os.makedirs(detection_spool_root(self.detection_spool_dir, self.robot_id), exist_ok=True)
+
+        self._localized_gate = LocalizedGate(self.localized_topic, self.require_localized)
 
         self._lock = threading.Lock()
         self._latest_pose = None
@@ -64,12 +69,13 @@ class DetectionLogger:
         rospy.on_shutdown(self._shutdown)
 
         rospy.loginfo(
-            "detection_logger ready robot_id=%s spool=%s topic=%s min_conf=%.2f sample_hz=%.2f",
+            "detection_logger ready robot_id=%s spool=%s topic=%s min_conf=%.2f sample_hz=%.2f require_localized=%s",
             self.robot_id,
             self.detection_spool_dir,
             self.detections_topic,
             self.min_confidence,
             self.sample_hz,
+            self.require_localized,
         )
 
     def _should_record(self, now: float) -> bool:
@@ -80,6 +86,9 @@ class DetectionLogger:
         return (now - self._last_sample_wall) >= (1.0 / self.sample_hz)
 
     def _detections_callback(self, msg: DetectedObjectArray):
+        if not self._localized_gate.ready:
+            return
+
         objects = detected_objects_to_list(msg, self.min_confidence)
         if not objects:
             return

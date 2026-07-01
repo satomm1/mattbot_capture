@@ -212,6 +212,8 @@ Manual `/capture/*` services remain available. If a manual session is already ac
 
 When `capture:=true`, `pose_logger` and `pose_uploader` run alongside the image capture stack. Pose is read locally from TF (`map` → `base_link`, `/amcl_pose` fallback) — not from DDS — so trajectories survive central server downtime.
 
+By default, pose samples are **not written until the first `/localized` message** (`require_localized:=true`). Logging continues after that even if localization is lost later.
+
 ### Sampling
 
 | Condition | Rate |
@@ -251,6 +253,8 @@ Each SQLite row: `wall_time`, `ros_time`, local `x/y/theta/frame`, optional flee
 | `~max_pose_spool_bytes` | `5368709120` | Spool cap (512 MB) |
 | `~map_frame` / `~base_frame` | `map` / `base_link` | TF frames |
 | `~pose_topic` | `/amcl_pose` | Pose fallback |
+| `~localized_topic` | `/localized` | Start logging after first `true` |
+| `~require_localized` | `true` | Disable to log from node startup |
 | `~robot_mode_topic` | `/robot_mode` | Static detection |
 
 ### pose_uploader parameters
@@ -264,6 +268,8 @@ Pose trajectories complement image capture: join on the central server by matchi
 ## Detection logging
 
 When `capture:=true`, `detection_logger` and `detection_uploader` run alongside the image capture stack. Subscribes to `/detected_objects` (`DetectedObjectArray` from OSOD) and writes a SQLite row when a message contains objects above `detection_min_confidence` — independent of JPEG/PNG saves. No rows are written when nothing is detected.
+
+Like pose logging, detection rows are **not written until the first `/localized` message** by default (`require_localized:=true`).
 
 Use `detection_sample_hz` to cap how often rows are written while objects are visible (default **1.0 Hz**). Set to `0` to log every qualifying message with no rate limit.
 
@@ -303,6 +309,8 @@ Chunks rotate hourly (default). Sealed chunks upload via `POST /api/v1/detection
 | `~max_detection_spool_bytes` | `5368709120` | Spool cap |
 | `~detections_topic` | `/detected_objects` | Input from image detection |
 | `~min_confidence` | `0.0` | Min `probability` to include in spool (`detection_min_confidence` launch arg) |
+| `~localized_topic` | `/localized` | Start logging after first `true` |
+| `~require_localized` | `true` | Disable to log from node startup |
 | `~map_frame` / `~base_frame` / `~pose_topic` | same as pose_logger | Robot pose context per snapshot |
 
 ### detection_uploader parameters

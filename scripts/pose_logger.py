@@ -14,6 +14,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_msgs.msg import Float64MultiArray, Int32
 
 from capture_utils.manifest import utc_now_iso
+from capture_utils.localized_gate import LocalizedGate
 from capture_utils.pose_lookup import lookup_pose
 from capture_utils.pose_spool import PoseChunkWriter, pose_spool_root
 from capture_utils.spool import dir_size_bytes
@@ -53,8 +54,12 @@ class PoseLogger(TransformMixin):
         self.base_frame = rospy.get_param("~base_frame", "base_link")
         self.pose_topic = rospy.get_param("~pose_topic", "/amcl_pose")
         self.robot_mode_topic = rospy.get_param("~robot_mode_topic", "/robot_mode")
+        self.localized_topic = rospy.get_param("~localized_topic", "/localized")
+        self.require_localized = bool(rospy.get_param("~require_localized", True))
 
         os.makedirs(pose_spool_root(self.pose_spool_dir, self.robot_id), exist_ok=True)
+
+        self._localized_gate = LocalizedGate(self.localized_topic, self.require_localized)
 
         self._lock = threading.Lock()
         self._latest_pose = None
@@ -79,10 +84,11 @@ class PoseLogger(TransformMixin):
         rospy.on_shutdown(self._shutdown)
 
         rospy.loginfo(
-            "pose_logger ready robot_id=%s spool=%s hz=%.2f",
+            "pose_logger ready robot_id=%s spool=%s hz=%.2f require_localized=%s",
             self.robot_id,
             self.pose_spool_dir,
             self.moving_sample_hz,
+            self.require_localized,
         )
 
     def _pose_callback(self, msg: PoseWithCovarianceStamped):
@@ -153,6 +159,9 @@ class PoseLogger(TransformMixin):
         return row
 
     def _tick(self, _event):
+        if not self._localized_gate.ready:
+            return
+
         if self._spool_over_limit():
             rospy.logwarn_throttle(60.0, "pose spool size limit exceeded; dropping samples")
             return
