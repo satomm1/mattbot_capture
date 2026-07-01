@@ -16,6 +16,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from sensor_msgs.msg import Image
 from std_msgs.msg import Empty
 from capture_utils.pose_lookup import lookup_pose
+from capture_utils.camera_orient import orient_bgr, orient_depth_u16, orient_mono8
 
 from capture_utils.detections import detected_objects_to_list
 from capture_utils import (
@@ -60,6 +61,7 @@ class CaptureNode:
         self.ir_image_topic = rospy.get_param("~ir_image_topic", "/camera/ir/image_raw")
         self.capture_depth = bool(rospy.get_param("~capture_depth", True))
         self.depth_image_topic = rospy.get_param("~depth_image_topic", "/camera/depth/image_raw")
+        self.tall = bool(rospy.get_param("~tall", False))
         self.base_frame = rospy.get_param("~base_frame", "base_link")
         self.map_frame = rospy.get_param("~map_frame", "map")
 
@@ -108,7 +110,10 @@ class CaptureNode:
         rospy.Service("/capture/save_frame", CaptureSaveFrame, self._save_frame_handler)
 
         rospy.loginfo(
-            "capture_node ready robot_id=%s spool=%s", self.robot_id, self.spool_dir
+            "capture_node ready robot_id=%s spool=%s tall=%s",
+            self.robot_id,
+            self.spool_dir,
+            self.tall,
         )
 
     def _image_callback(self, msg: Image):
@@ -234,6 +239,7 @@ class CaptureNode:
             cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except CvBridgeError as exc:
             return None, f"cv_bridge error: {exc}"
+        cv_image = orient_bgr(cv_image, self.tall)
         ok, encoded = cv2.imencode(
             ".jpg", cv_image, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
         )
@@ -247,6 +253,7 @@ class CaptureNode:
             cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding="mono8")
         except CvBridgeError as exc:
             return None, f"cv_bridge error: {exc}"
+        cv_image = orient_mono8(cv_image, self.tall)
         ok, encoded = cv2.imencode(
             ".jpg", cv_image, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
         )
@@ -260,6 +267,7 @@ class CaptureNode:
             cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding="16UC1")
         except CvBridgeError as exc:
             return None, f"cv_bridge error: {exc}"
+        cv_image = orient_depth_u16(cv_image, self.tall)
         ok, encoded = cv2.imencode(".png", cv_image)
         if not ok:
             return None, "depth png encode failed"

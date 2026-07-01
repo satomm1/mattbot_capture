@@ -190,6 +190,7 @@ Manual `/capture/*` services remain available. If a manual session is already ac
 | `~ir_image_topic` | `/camera/ir/image_raw` | IR input (requires `enable_ir:=capture` at bringup) |
 | `~capture_depth` | `true` | Save depth companion PNG when depth messages available |
 | `~depth_image_topic` | `/camera/depth/image_raw` | Depth input (always on for OSOD; no bringup gating) |
+| `~tall` | `false` | When `true`, rotate RGB/IR 180° and flip depth before save (matches OSOD on upside-down camera) |
 | `~pose_topic` | `/amcl_pose` | Pose fallback if TF unavailable |
 | `~detections_topic` | `/detected_objects` | Latest detections cached on save |
 | `~map_frame` / `~base_frame` | `map` / `base_link` | TF lookup for pose |
