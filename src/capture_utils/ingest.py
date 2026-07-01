@@ -2,6 +2,7 @@
 
 UPLOAD_PATH = "/api/v1/upload"
 POSE_UPLOAD_PATH = "/api/v1/pose_upload"
+DETECTION_UPLOAD_PATH = "/api/v1/detection_upload"
 HEALTH_PATH = "/health"
 
 
@@ -22,3 +23,7 @@ def ingest_health_url(host: str, port: int, scheme: str = "http") -> str:
 
 def ingest_pose_upload_url(host: str, port: int, scheme: str = "http") -> str:
     return ingest_base_url(host, port, scheme) + POSE_UPLOAD_PATH
+
+
+def ingest_detection_upload_url(host: str, port: int, scheme: str = "http") -> str:
+    return ingest_base_url(host, port, scheme) + DETECTION_UPLOAD_PATH

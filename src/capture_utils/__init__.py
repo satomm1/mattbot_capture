@@ -1,4 +1,9 @@
-from .ingest import ingest_health_url, ingest_pose_upload_url, ingest_upload_url
+from .ingest import (
+    ingest_detection_upload_url,
+    ingest_health_url,
+    ingest_pose_upload_url,
+    ingest_upload_url,
+)
 from .manifest import (
     SCHEMA_VERSION,
     STATUS_READY,
@@ -12,6 +17,15 @@ from .manifest import (
     robot_spool_root,
     session_dir,
     utc_now_iso,
+)
+from .detection_spool import (
+    DetectionChunkWriter,
+    DetectionSpoolError,
+    detection_chunk_paths,
+    detection_spool_root,
+    find_ready_detection_chunks,
+    load_detection_chunk_meta,
+    remove_detection_chunk,
 )
 from .pose_spool import (
     PoseChunkWriter,
@@ -33,6 +47,7 @@ from .spool import (
 )
 
 __all__ = [
+    "ingest_detection_upload_url",
     "ingest_health_url",
     "ingest_pose_upload_url",
     "ingest_upload_url",
@@ -42,20 +57,27 @@ __all__ = [
     "SessionWriter",
     "SpoolError",
     "SpoolFullError",
+    "DetectionChunkWriter",
+    "DetectionSpoolError",
     "PoseChunkWriter",
     "PoseSpoolError",
+    "detection_chunk_paths",
+    "detection_spool_root",
     "dir_size_bytes",
+    "find_ready_detection_chunks",
     "find_ready_sessions",
     "find_ready_pose_chunks",
     "frame_filename",
     "frame_id_from_filename",
     "ir_frame_filename",
     "depth_frame_filename",
+    "load_detection_chunk_meta",
     "load_manifest",
     "load_pose_chunk_meta",
     "manifest_path",
     "new_session_id",
     "pose_chunk_paths",
+    "remove_detection_chunk",
     "remove_pose_chunk",
     "remove_session",
     "write_wav_session",

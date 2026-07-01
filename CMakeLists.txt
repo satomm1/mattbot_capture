@@ -33,6 +33,8 @@ catkin_install_python(PROGRAMS
   scripts/capture_auto_trigger.py
   scripts/pose_logger.py
   scripts/pose_uploader.py
+  scripts/detection_logger.py
+  scripts/detection_uploader.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

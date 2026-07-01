@@ -17,6 +17,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Empty
 from capture_utils.pose_lookup import lookup_pose
 
+from capture_utils.detections import detected_objects_to_list
 from capture_utils import (
     SessionWriter,
     SpoolError,
@@ -272,25 +273,7 @@ class CaptureNode:
     def _detections_to_list(self) -> list:
         with self._lock:
             msg = self._latest_detections
-        if msg is None:
-            return []
-
-        out = []
-        for obj in msg.objects:
-            out.append(
-                {
-                    "class_name": obj.class_name,
-                    "probability": float(obj.probability),
-                    "pose": {
-                        "x": obj.pose.position.x,
-                        "y": obj.pose.position.y,
-                        "z": obj.pose.position.z,
-                    },
-                    "width": float(obj.width),
-                    "bbox": [float(obj.x1), float(obj.y1), float(obj.x2), float(obj.y2)],
-                }
-            )
-        return out
+        return detected_objects_to_list(msg)
 
     def _parse_extra(self, metadata_json: str) -> dict:
         if not metadata_json or not metadata_json.strip():

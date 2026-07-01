@@ -261,6 +261,58 @@ Pose trajectories complement image capture: join on the central server by matchi
 
 ---
 
+## Detection logging
+
+When `capture:=true`, `detection_logger` and `detection_uploader` run alongside the image capture stack. Subscribes to `/detected_objects` (`DetectedObjectArray` from OSOD) and writes a SQLite row when a message contains objects above `detection_min_confidence` — independent of JPEG/PNG saves. No rows are written when nothing is detected.
+
+Use `detection_sample_hz` to cap how often rows are written while objects are visible (default **1.0 Hz**). Set to `0` to log every qualifying message with no rate limit.
+
+### Detection spool layout
+
+```
+{detection_spool_dir}/robot_{ROBOT_ID}/
+  active.sqlite
+  active.meta.json
+  chunk_2025-06-26T14-00-00Z.sqlite
+  chunk_2025-06-26T14-00-00Z.meta.json
+```
+
+Each SQLite row in `detection_snapshots`: `wall_time`, `ros_time`, robot pose at sample, `object_count`, `objects_json` (same schema as capture manifest `detections[]`).
+
+Object entry schema:
+
+```json
+{
+  "class_name": "person",
+  "probability": 0.92,
+  "pose": {"x": 12.3, "y": 4.5, "z": 0.0},
+  "width": 0.33,
+  "bbox": [x1, y1, x2, y2]
+}
+```
+
+Chunks rotate hourly (default). Sealed chunks upload via `POST /api/v1/detection_upload`.
+
+### detection_logger parameters
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `~detection_spool_dir` | `/workspace/catkin_ws/data/detection_spool` | Local buffer root |
+| `~sample_hz` | `1.0` | Max log rate when objects present (`detection_sample_hz` launch arg; `0` = unlimited) |
+| `~chunk_hours` | `1.0` | Rotate SQLite chunk |
+| `~max_detection_spool_bytes` | `5368709120` | Spool cap |
+| `~detections_topic` | `/detected_objects` | Input from image detection |
+| `~min_confidence` | `0.0` | Min `probability` to include in spool (`detection_min_confidence` launch arg) |
+| `~map_frame` / `~base_frame` / `~pose_topic` | same as pose_logger | Robot pose context per snapshot |
+
+### detection_uploader parameters
+
+Same ingest connection params as `capture_uploader`. Upload path fixed at `/api/v1/detection_upload`.
+
+Join detection snapshots to image captures on the central server by overlapping `wall_time` / `ros_time`.
+
+---
+
 ## Central machine specification
 
 Implement separately on a central PC/NAS. Robots never connect to the database directly.
@@ -389,6 +441,29 @@ Returns `200` with body `{"status": "ok"}`. The robot uploader uses this before 
 {"ok": true, "chunk_id": "chunk_2025-06-26T14-00-00Z", "rows_accepted": 7200}
 ```
 
+#### `POST /api/v1/detection_upload`
+
+**Headers:** same as image upload (`X-Robot-Id`, optional `X-Api-Key`).
+
+**Body:** `multipart/form-data`
+
+- `meta` — JSON file (`chunk_*.meta.json`)
+- `chunk` — SQLite file (`chunk_*.sqlite`)
+
+**Processing:**
+
+1. Parse meta; require `schema_version`, `status == "ready_for_upload"`.
+2. Verify header robot id matches meta.
+3. Read rows from SQLite `detection_snapshots` table; bulk-insert into `detection_snapshots` (PostgreSQL).
+4. Parse `objects_json` into JSONB column `objects`.
+5. Use idempotent upsert on `(robot_id, wall_time, chunk_id)` or similar.
+
+**Response `201`:**
+
+```json
+{"ok": true, "chunk_id": "chunk_2025-06-26T14-00-00Z", "rows_accepted": 3600}
+```
+
 ### PostgreSQL schema (pose chunks)
 
 ```sql
@@ -413,6 +488,31 @@ CREATE TABLE robot_poses (
 );
 
 CREATE INDEX idx_robot_poses_robot_time ON robot_poses (robot_id, wall_time);
+```
+
+### PostgreSQL schema (detection chunks)
+
+```sql
+CREATE TABLE detection_snapshots (
+  id              BIGSERIAL PRIMARY KEY,
+  robot_id        INTEGER NOT NULL,
+  chunk_id        TEXT NOT NULL,
+  wall_time       TIMESTAMPTZ NOT NULL,
+  ros_time_sec    BIGINT,
+  ros_time_nsec   INTEGER,
+  robot_x         DOUBLE PRECISION,
+  robot_y         DOUBLE PRECISION,
+  robot_theta     DOUBLE PRECISION,
+  robot_frame     TEXT,
+  robot_valid     BOOLEAN NOT NULL,
+  object_count    INTEGER NOT NULL,
+  objects         JSONB NOT NULL,
+  uploaded_at     TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (robot_id, wall_time, chunk_id)
+);
+
+CREATE INDEX idx_detection_snapshots_robot_time ON detection_snapshots (robot_id, wall_time);
+CREATE INDEX idx_detection_objects ON detection_snapshots USING GIN (objects);
 ```
 
 ### Deployment sketch
