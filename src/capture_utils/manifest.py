@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 SCHEMA_VERSION = 1
 STATUS_RECORDING = "recording"
 STATUS_READY = "ready_for_upload"
+STATUS_UPLOADED = "uploaded"
 
 
 def utc_now_iso() -> str:

@@ -206,6 +206,39 @@ Manual `/capture/*` services remain available. If a manual session is already ac
 | `~poll_interval_s` | `30` | Scan interval |
 | `~request_timeout_s` | `120` | HTTP timeout per batch |
 | `~check_health` | `true` | Ping `/health` before upload |
+| `~archive_dir` | `/workspace/catkin_ws/data/upload_archive` | Permanent backup after successful upload |
+| `~retain_after_upload` | `true` | Move to archive; `false` = delete from spool (legacy) |
+
+Shared by `pose_uploader` and `detection_uploader` as well.
+
+---
+
+## Upload archive
+
+After a successful central ingest (HTTP 200/201), uploaders **move** data from the hot spool into a permanent on-robot archive instead of deleting it.
+
+### Lifecycle
+
+1. Logger writes to spool with `status: "ready_for_upload"`.
+2. Uploader POSTs to central ingest.
+3. On success: manifest/meta updated to `status: "uploaded"` with `uploaded_at`.
+4. Item moved to `{archive_dir}/robot_{ROBOT_ID}/...` (removed from spool).
+5. If move fails: item stays in spool as `uploaded` (not re-uploaded); uploader retries the move each poll.
+
+Set `retain_after_upload:=false` to restore the old delete-on-upload behavior (useful for disk-constrained dev).
+
+### Archive layout
+
+```
+{archive_dir}/robot_{ROBOT_ID}/
+  sessions/{session_id}/manifest.json + frames...
+  pose/{chunk_id}.sqlite + {chunk_id}.meta.json
+  detection/{chunk_id}.sqlite + {chunk_id}.meta.json
+```
+
+Default archive root: `/workspace/catkin_ws/data/upload_archive`. Point at a large external mount if needed. Archive grows unbounded — rsync to NAS separately for off-robot backup.
+
+Central ingest still receives items with `status: "ready_for_upload"` at POST time; archived copies on the robot show `status: "uploaded"`.
 
 ---
 

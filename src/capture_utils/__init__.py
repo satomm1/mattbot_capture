@@ -8,6 +8,7 @@ from .manifest import (
     SCHEMA_VERSION,
     STATUS_READY,
     STATUS_RECORDING,
+    STATUS_UPLOADED,
     frame_filename,
     frame_id_from_filename,
     ir_frame_filename,
@@ -46,6 +47,16 @@ from .spool import (
     write_wav_session,
 )
 
+from .upload_archive import (
+    archive_detection_chunk,
+    archive_pose_chunk,
+    archive_session,
+    find_pending_archive_detection_chunks,
+    find_pending_archive_pose_chunks,
+    find_pending_archive_sessions,
+    mark_uploaded,
+)
+
 __all__ = [
     "ingest_detection_upload_url",
     "ingest_health_url",
@@ -54,6 +65,14 @@ __all__ = [
     "SCHEMA_VERSION",
     "STATUS_READY",
     "STATUS_RECORDING",
+    "STATUS_UPLOADED",
+    "archive_detection_chunk",
+    "archive_pose_chunk",
+    "archive_session",
+    "find_pending_archive_detection_chunks",
+    "find_pending_archive_pose_chunks",
+    "find_pending_archive_sessions",
+    "mark_uploaded",
     "SessionWriter",
     "SpoolError",
     "SpoolFullError",

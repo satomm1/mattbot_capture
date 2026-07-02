@@ -11,11 +11,14 @@ import rospy
 import requests
 
 from capture_utils import (
+    archive_session,
+    find_pending_archive_sessions,
     find_ready_sessions,
     ingest_health_url,
     ingest_upload_url,
     load_manifest,
     manifest_path,
+    mark_uploaded,
     remove_session,
     session_dir,
 )
@@ -42,6 +45,10 @@ class CaptureUploader:
             sys.exit(1)
 
         self.spool_dir = rospy.get_param("~spool_dir", "/workspace/catkin_ws/data/capture_spool")
+        self.archive_dir = rospy.get_param(
+            "~archive_dir", "/workspace/catkin_ws/data/upload_archive"
+        )
+        self.retain_after_upload = bool(rospy.get_param("~retain_after_upload", True))
         ingest_ip = rospy.get_param("~ingest_ip", "192.168.50.2")
         ingest_port = int(rospy.get_param("~ingest_port", 8080))
         ingest_scheme = rospy.get_param("~ingest_scheme", "http")
@@ -56,10 +63,12 @@ class CaptureUploader:
         self._backoff_s = self.poll_interval_s
 
         rospy.loginfo(
-            "capture_uploader ready robot_id=%s ingest=%s spool=%s",
+            "capture_uploader ready robot_id=%s ingest=%s spool=%s archive=%s retain=%s",
             self.robot_id,
             self.ingest_url,
             self.spool_dir,
+            self.archive_dir,
+            self.retain_after_upload,
         )
 
     def _headers(self) -> dict:
@@ -76,6 +85,48 @@ class CaptureUploader:
             return resp.status_code == 200
         except requests.RequestException:
             return False
+
+    def _finalize_after_upload(self, session_id: str, ingest_status: int) -> bool:
+        manifest_file = manifest_path(self.spool_dir, self.robot_id, session_id)
+        try:
+            mark_uploaded(manifest_file, ingest_status)
+        except OSError as exc:
+            rospy.logerr("session %s: failed to mark uploaded: %s", session_id, exc)
+            return False
+
+        if self.retain_after_upload:
+            try:
+                if not archive_session(self.archive_dir, self.spool_dir, self.robot_id, session_id):
+                    rospy.logerr(
+                        "session %s: upload ok but archive move failed; will retry", session_id
+                    )
+                    return True
+            except OSError as exc:
+                rospy.logerr(
+                    "session %s: upload ok but archive move failed: %s; will retry",
+                    session_id,
+                    exc,
+                )
+                return True
+        else:
+            remove_session(self.spool_dir, self.robot_id, session_id)
+        return True
+
+    def _retry_pending_archives(self) -> None:
+        if not self.retain_after_upload:
+            return
+        for session_id in find_pending_archive_sessions(self.spool_dir, self.robot_id):
+            try:
+                if archive_session(self.archive_dir, self.spool_dir, self.robot_id, session_id):
+                    rospy.loginfo("archived pending session=%s", session_id)
+                else:
+                    rospy.logwarn_throttle(
+                        60.0, "archive retry pending for session=%s", session_id
+                    )
+            except OSError as exc:
+                rospy.logwarn_throttle(
+                    60.0, "archive retry failed session=%s: %s", session_id, exc
+                )
 
     def _upload_session(self, session_id: str) -> bool:
         manifest_file = manifest_path(self.spool_dir, self.robot_id, session_id)
@@ -133,12 +184,14 @@ class CaptureUploader:
             )
             return False
 
-        remove_session(self.spool_dir, self.robot_id, session_id)
+        self._finalize_after_upload(session_id, resp.status_code)
         rospy.loginfo("uploaded session=%s (%d frames)", session_id, len(manifest.get("frames", [])))
         return True
 
     def spin(self):
         while not rospy.is_shutdown():
+            self._retry_pending_archives()
+
             if not self._central_reachable():
                 rospy.logwarn_throttle(60.0, "central ingest unreachable; will retry")
                 time.sleep(self._backoff_s)

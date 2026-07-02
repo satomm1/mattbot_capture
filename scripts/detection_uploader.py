@@ -10,11 +10,14 @@ import rospy
 import requests
 
 from capture_utils import (
-    detection_chunk_paths,
+    archive_detection_chunk,
+    find_pending_archive_detection_chunks,
     find_ready_detection_chunks,
     ingest_detection_upload_url,
     ingest_health_url,
     load_detection_chunk_meta,
+    mark_uploaded,
+    detection_chunk_paths,
     remove_detection_chunk,
 )
 from dds_utils import RobotIdError, require_robot_id_int
@@ -33,6 +36,10 @@ class DetectionUploader:
         self.detection_spool_dir = rospy.get_param(
             "~detection_spool_dir", "/workspace/catkin_ws/data/detection_spool"
         )
+        self.archive_dir = rospy.get_param(
+            "~archive_dir", "/workspace/catkin_ws/data/upload_archive"
+        )
+        self.retain_after_upload = bool(rospy.get_param("~retain_after_upload", True))
         ingest_ip = rospy.get_param("~ingest_ip", "192.168.50.2")
         ingest_port = int(rospy.get_param("~ingest_port", 8080))
         ingest_scheme = rospy.get_param("~ingest_scheme", "http")
@@ -50,10 +57,12 @@ class DetectionUploader:
         rospy.on_shutdown(self._on_shutdown)
 
         rospy.loginfo(
-            "detection_uploader ready robot_id=%s ingest=%s spool=%s",
+            "detection_uploader ready robot_id=%s ingest=%s spool=%s archive=%s retain=%s",
             self.robot_id,
             self.ingest_url,
             self.detection_spool_dir,
+            self.archive_dir,
+            self.retain_after_upload,
         )
 
     def _on_shutdown(self):
@@ -73,6 +82,54 @@ class DetectionUploader:
             return resp.status_code == 200
         except requests.RequestException:
             return False
+
+    def _finalize_after_upload(self, chunk_id: str, ingest_status: int) -> bool:
+        meta_path, _ = detection_chunk_paths(self.detection_spool_dir, self.robot_id, chunk_id)
+        try:
+            mark_uploaded(meta_path, ingest_status)
+        except OSError as exc:
+            rospy.logerr("chunk %s: failed to mark uploaded: %s", chunk_id, exc)
+            return False
+
+        if self.retain_after_upload:
+            try:
+                if not archive_detection_chunk(
+                    self.archive_dir, self.detection_spool_dir, self.robot_id, chunk_id
+                ):
+                    rospy.logerr(
+                        "chunk %s: upload ok but archive move failed; will retry", chunk_id
+                    )
+                    return True
+            except OSError as exc:
+                rospy.logerr(
+                    "chunk %s: upload ok but archive move failed: %s; will retry",
+                    chunk_id,
+                    exc,
+                )
+                return True
+        else:
+            remove_detection_chunk(self.detection_spool_dir, self.robot_id, chunk_id)
+        return True
+
+    def _retry_pending_archives(self) -> None:
+        if not self.retain_after_upload:
+            return
+        for chunk_id in find_pending_archive_detection_chunks(
+            self.detection_spool_dir, self.robot_id
+        ):
+            try:
+                if archive_detection_chunk(
+                    self.archive_dir, self.detection_spool_dir, self.robot_id, chunk_id
+                ):
+                    rospy.loginfo("archived pending detection chunk=%s", chunk_id)
+                else:
+                    rospy.logwarn_throttle(
+                        60.0, "archive retry pending for detection chunk=%s", chunk_id
+                    )
+            except OSError as exc:
+                rospy.logwarn_throttle(
+                    60.0, "archive retry failed detection chunk=%s: %s", chunk_id, exc
+                )
 
     def _upload_chunk(self, chunk_id: str) -> bool:
         if not self._upload_enabled or rospy.is_shutdown():
@@ -123,7 +180,7 @@ class DetectionUploader:
             )
             return False
 
-        remove_detection_chunk(self.detection_spool_dir, self.robot_id, chunk_id)
+        self._finalize_after_upload(chunk_id, resp.status_code)
         rospy.loginfo(
             "uploaded detection chunk=%s (%d rows)",
             chunk_id,
@@ -133,6 +190,8 @@ class DetectionUploader:
 
     def spin(self):
         while not rospy.is_shutdown() and self._upload_enabled:
+            self._retry_pending_archives()
+
             if not self._central_reachable():
                 rospy.logwarn_throttle(60.0, "central ingest unreachable; will retry")
                 if rospy.sleep(self._backoff_s):
