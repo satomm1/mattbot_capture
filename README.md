@@ -132,7 +132,28 @@ Central ingest: pair depth to RGB via `extra.rgb_frame_id` or `_depth.png` suffi
 
 ## Auto-capture
 
-When capture is enabled, `capture_auto_trigger` runs two independent session triggers:
+When capture is enabled, `capture_auto_trigger` runs session triggers. By default it uses navigation and person modes. Opt into **continuous** mode for indefinite post-localization recording.
+
+### Continuous (opt-in)
+
+After the first `/localized` message, starts a single long-lived session with trigger `"continuous"` and never stops until shutdown. `capture_node` rotates the on-disk session every `session_chunk_seconds` (seal as `ready_for_upload`, open a new UUID with the same trigger) so manifests stay bounded.
+
+- **Start:** first `/localized` (`require_localized:=true`)
+- **Sample rate:** 10 Hz (`continuous_sample_hz`)
+- **Chunking:** `session_chunk_seconds` (use `20` for ~20 s manifests; `0` disables rotation)
+- **Exclusive:** when `continuous_capture:=true`, nav and person auto-capture are disabled
+
+Example (KAIST bringup, 10 Hz video + 10 Hz pose):
+
+```bash
+roslaunch mattbot_bringup kaist.launch \
+  capture:=true \
+  continuous_capture:=true \
+  session_chunk_seconds:=20 \
+  continuous_sample_hz:=10.0 \
+  moving_sample_hz:=10.0 \
+  static_sample_hz:=10.0
+```
 
 ### Navigation
 

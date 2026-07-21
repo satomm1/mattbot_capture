@@ -7,6 +7,9 @@
   <arg name="jpeg_quality" default="90"/>
   <arg name="poll_interval_s" default="30"/>
   <arg name="auto_capture" default="true"/>
+  <arg name="continuous_capture" default="false"/>
+  <arg name="continuous_sample_hz" default="10.0"/>
+  <arg name="session_chunk_seconds" default="0"/>
   <arg name="nav_sample_hz" default="0.5"/>
   <arg name="person_capture" default="true"/>
   <arg name="person_sample_hz" default="1.0"/>
@@ -29,6 +32,7 @@
       <param name="spool_dir" value="$(arg spool_dir)"/>
       <param name="jpeg_quality" value="$(arg jpeg_quality)"/>
       <param name="tall" value="$(arg tall)"/>
+      <param name="session_chunk_seconds" value="$(arg session_chunk_seconds)"/>
       <param name="capture_ir" value="true"/>
       <param name="ir_image_topic" value="/camera/ir/image_raw"/>
       <param name="capture_depth" value="true"/>
@@ -47,6 +51,9 @@
 
     <node pkg="mattbot_capture" type="capture_auto_trigger.py" name="capture_auto_trigger" output="screen">
       <param name="auto_capture_enabled" value="$(arg auto_capture)"/>
+      <param name="continuous_capture_enabled" value="$(arg continuous_capture)"/>
+      <param name="continuous_sample_hz" value="$(arg continuous_sample_hz)"/>
+      <param name="require_localized" value="$(arg require_localized)"/>
       <param name="nav_sample_hz" value="$(arg nav_sample_hz)"/>
       <param name="person_capture_enabled" value="$(arg person_capture)"/>
       <param name="person_sample_hz" value="$(arg person_sample_hz)"/>

@@ -64,6 +64,8 @@ class CaptureNode:
         self.tall = bool(rospy.get_param("~tall", False))
         self.base_frame = rospy.get_param("~base_frame", "base_link")
         self.map_frame = rospy.get_param("~map_frame", "map")
+        # 0 = no rotation; continuous capture sets e.g. 20 to seal bounded manifests
+        self.session_chunk_seconds = float(rospy.get_param("~session_chunk_seconds", 0.0))
 
         os.makedirs(robot_spool_root(self.spool_dir, self.robot_id), exist_ok=True)
 
@@ -77,7 +79,9 @@ class CaptureNode:
         self._tf_listener = tf.TransformListener()
 
         self._session = None  # SessionWriter | None
+        self._session_trigger = ""
         self._session_sample_hz = 0.0
+        self._chunk_started_wall = 0.0
         self._sample_timer = None
         self._ir_warned = False
         self._depth_warned = False
@@ -108,12 +112,14 @@ class CaptureNode:
         rospy.Service("/capture/start_session", CaptureStartSession, self._start_session_handler)
         rospy.Service("/capture/stop_session", CaptureStopSession, self._stop_session_handler)
         rospy.Service("/capture/save_frame", CaptureSaveFrame, self._save_frame_handler)
+        rospy.on_shutdown(self._shutdown)
 
         rospy.loginfo(
-            "capture_node ready robot_id=%s spool=%s tall=%s",
+            "capture_node ready robot_id=%s spool=%s tall=%s chunk_s=%.1f",
             self.robot_id,
             self.spool_dir,
             self.tall,
+            self.session_chunk_seconds,
         )
 
     def _image_callback(self, msg: Image):
@@ -165,40 +171,51 @@ class CaptureNode:
 
     def _start_session_handler(self, req: CaptureStartSession):
         resp = CaptureStartSessionResponse(success=False, session_id="", message="")
-        if self._session is not None:
-            resp.message = "session already active; stop it first"
-            return resp
+        with self._lock:
+            if self._session is not None:
+                resp.message = "session already active; stop it first"
+                return resp
 
-        session_id = req.session_id.strip() or new_session_id()
-        trigger = req.trigger.strip() or "manual"
-        try:
-            self._session = SessionWriter(self.spool_dir, self.robot_id, session_id, trigger)
-        except OSError as exc:
-            resp.message = f"failed to create session: {exc}"
-            return resp
+            session_id = req.session_id.strip() or new_session_id()
+            trigger = req.trigger.strip() or "manual"
+            try:
+                self._session = SessionWriter(self.spool_dir, self.robot_id, session_id, trigger)
+            except OSError as exc:
+                resp.message = f"failed to create session: {exc}"
+                return resp
 
-        self._session_sample_hz = max(0.0, float(req.sample_hz))
-        self._configure_sample_timer()
+            self._session_trigger = trigger
+            self._session_sample_hz = max(0.0, float(req.sample_hz))
+            self._chunk_started_wall = rospy.get_time()
+            self._configure_sample_timer()
+
         resp.success = True
         resp.session_id = session_id
         resp.message = "session started"
-        rospy.loginfo("capture session started id=%s trigger=%s hz=%s", session_id, trigger, self._session_sample_hz)
+        rospy.loginfo(
+            "capture session started id=%s trigger=%s hz=%s chunk_s=%.1f",
+            session_id,
+            trigger,
+            self._session_sample_hz,
+            self.session_chunk_seconds,
+        )
         return resp
 
     def _stop_session_handler(self, _req: CaptureStopSession):
         resp = CaptureStopSessionResponse(success=False, message="")
-        if self._session is None:
-            resp.message = "no active session"
-            return resp
+        with self._lock:
+            if self._session is None:
+                resp.message = "no active session"
+                return resp
 
-        session_id = self._session.session_id
-        try:
-            self._session.finalize()
-        except SpoolError as exc:
-            resp.message = str(exc)
-            return resp
-        finally:
-            self._clear_session()
+            session_id = self._session.session_id
+            try:
+                self._session.finalize()
+            except SpoolError as exc:
+                resp.message = str(exc)
+                return resp
+            finally:
+                self._clear_session()
 
         resp.success = True
         resp.message = f"session {session_id} finalized"
@@ -219,14 +236,75 @@ class CaptureNode:
             self._sample_timer = rospy.Timer(rospy.Duration(period), self._sample_timer_callback)
 
     def _sample_timer_callback(self, _event):
+        self._maybe_rotate_chunk()
         self._save_frame(metadata_json="")
+
+    def _maybe_rotate_chunk(self):
+        """Finalize current session and open a new one when chunk duration elapses."""
+        if self.session_chunk_seconds <= 0.0:
+            return
+
+        with self._lock:
+            if self._session is None:
+                return
+            now = rospy.get_time()
+            if self._chunk_started_wall <= 0.0:
+                self._chunk_started_wall = now
+                return
+            if (now - self._chunk_started_wall) < self.session_chunk_seconds:
+                return
+
+            old_id = self._session.session_id
+            trigger = self._session_trigger or "manual"
+            try:
+                self._session.finalize()
+            except SpoolError as exc:
+                rospy.logwarn("chunk finalize failed session=%s: %s", old_id, exc)
+                return
+
+            session_id = new_session_id()
+            try:
+                self._session = SessionWriter(self.spool_dir, self.robot_id, session_id, trigger)
+            except OSError as exc:
+                rospy.logerr("chunk rotate failed to open session: %s", exc)
+                self._clear_session()
+                return
+
+            self._session_trigger = trigger
+            self._chunk_started_wall = now
+            rospy.loginfo(
+                "capture chunk rotated sealed=%s new=%s trigger=%s",
+                old_id,
+                session_id,
+                trigger,
+            )
 
     def _clear_session(self):
         self._session = None
+        self._session_trigger = ""
         self._session_sample_hz = 0.0
+        self._chunk_started_wall = 0.0
         if self._sample_timer is not None:
             self._sample_timer.shutdown()
             self._sample_timer = None
+
+    def _shutdown(self):
+        with self._lock:
+            if self._sample_timer is not None:
+                self._sample_timer.shutdown()
+                self._sample_timer = None
+            if self._session is None:
+                return
+            session_id = self._session.session_id
+            try:
+                self._session.finalize()
+                rospy.loginfo("capture session finalized on shutdown id=%s", session_id)
+            except SpoolError as exc:
+                rospy.logwarn("shutdown finalize failed session=%s: %s", session_id, exc)
+            self._session = None
+            self._session_trigger = ""
+            self._session_sample_hz = 0.0
+            self._chunk_started_wall = 0.0
 
     def _spool_over_limit(self) -> bool:
         root = robot_spool_root(self.spool_dir, self.robot_id)
@@ -315,18 +393,19 @@ class CaptureNode:
         detections = self._detections_to_list()
         extra = self._parse_extra(metadata_json)
 
-        one_shot = self._session is None
-        if one_shot:
-            session_id = new_session_id()
-            trigger = extra.pop("trigger", "snapshot")
-            if not isinstance(trigger, str) or not trigger.strip():
-                trigger = "snapshot"
-            try:
-                session = SessionWriter(self.spool_dir, self.robot_id, session_id, trigger)
-            except OSError as exc:
-                return None, f"failed to create session: {exc}"
-        else:
-            session = self._session
+        with self._lock:
+            one_shot = self._session is None
+            if one_shot:
+                session_id = new_session_id()
+                trigger = extra.pop("trigger", "snapshot")
+                if not isinstance(trigger, str) or not trigger.strip():
+                    trigger = "snapshot"
+                try:
+                    session = SessionWriter(self.spool_dir, self.robot_id, session_id, trigger)
+                except OSError as exc:
+                    return None, f"failed to create session: {exc}"
+            else:
+                session = self._session
 
         try:
             frame_id = session.append_frame(
