@@ -85,6 +85,7 @@ class CaptureNode:
         self._session_sample_hz = 0.0
         self._chunk_started_wall = 0.0
         self._sample_timer = None
+        self._last_saved_stamp = None  # (sec, nsec) used in last filename
         self._ir_warned = False
         self._depth_warned = False
 
@@ -286,9 +287,34 @@ class CaptureNode:
         self._session_trigger = ""
         self._session_sample_hz = 0.0
         self._chunk_started_wall = 0.0
+        self._last_saved_stamp = None
         if self._sample_timer is not None:
             self._sample_timer.shutdown()
             self._sample_timer = None
+
+    def _unique_frame_stamp(self, msg: Image) -> tuple[int, int]:
+        """Return (sec, nsec) for filenames; fall back to now if camera stamp stalls.
+
+        Continuous sampling can fire faster than the camera stamp advances (or with a
+        stuck header stamp). Reusing that stamp overwrites the same JPEG on disk while
+        manifest wall_time keeps updating — so uniquify when the stamp does not move.
+        """
+        cam = msg.header.stamp
+        cam_key = (int(cam.secs), int(cam.nsecs))
+        if cam.to_sec() > 0.0 and cam_key != self._last_saved_stamp:
+            stamp_key = cam_key
+        else:
+            now = rospy.Time.now()
+            stamp_key = (int(now.secs), int(now.nsecs))
+            if stamp_key == self._last_saved_stamp:
+                stamp_key = (stamp_key[0], stamp_key[1] + 1)
+            rospy.logwarn_throttle(
+                30.0,
+                "image stamp not advancing (last=%s); naming frames with rospy.Time.now()",
+                self._last_saved_stamp,
+            )
+        self._last_saved_stamp = stamp_key
+        return stamp_key
 
     def _shutdown(self):
         with self._lock:
@@ -390,12 +416,14 @@ class CaptureNode:
         if err:
             return None, err
 
-        ros_sec = msg.header.stamp.secs
-        ros_nsec = msg.header.stamp.nsecs
+        ros_sec, ros_nsec = self._unique_frame_stamp(msg)
         filename = frame_filename(ros_sec, ros_nsec)
         pose = self._lookup_pose()
         detections = self._detections_to_list()
         extra = self._parse_extra(metadata_json)
+        cam = msg.header.stamp
+        if (int(cam.secs), int(cam.nsecs)) != (ros_sec, ros_nsec) and cam.to_sec() > 0.0:
+            extra.setdefault("camera_stamp", {"sec": int(cam.secs), "nsec": int(cam.nsecs)})
 
         with self._lock:
             one_shot = self._session is None
