@@ -10,6 +10,7 @@
   <arg name="continuous_capture" default="false"/>
   <arg name="continuous_sample_hz" default="10.0"/>
   <arg name="session_chunk_seconds" default="0"/>
+  <arg name="log_save_timing" default="false"/>
   <arg name="nav_sample_hz" default="0.5"/>
   <arg name="person_capture" default="true"/>
   <arg name="person_sample_hz" default="1.0"/>
@@ -33,6 +34,7 @@
       <param name="jpeg_quality" value="$(arg jpeg_quality)"/>
       <param name="tall" value="$(arg tall)"/>
       <param name="session_chunk_seconds" value="$(arg session_chunk_seconds)"/>
+      <param name="log_save_timing" value="$(arg log_save_timing)"/>
       <param name="capture_ir" value="true"/>
       <param name="ir_image_topic" value="/camera/ir/image_raw"/>
       <param name="capture_depth" value="true"/>

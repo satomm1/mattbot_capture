@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import threading
+import time
 
 import cv2
 import rospy
@@ -66,6 +67,7 @@ class CaptureNode:
         self.map_frame = rospy.get_param("~map_frame", "map")
         # 0 = no rotation; continuous capture sets e.g. 20 to seal bounded manifests
         self.session_chunk_seconds = float(rospy.get_param("~session_chunk_seconds", 0.0))
+        self.log_save_timing = bool(rospy.get_param("~log_save_timing", False))
 
         os.makedirs(robot_spool_root(self.spool_dir, self.robot_id), exist_ok=True)
 
@@ -382,6 +384,8 @@ class CaptureNode:
         if msg is None:
             return None, "no camera frame available yet"
 
+        t0 = time.perf_counter() if self.log_save_timing else None
+
         jpeg_bytes, err = self._encode_jpeg(msg)
         if err:
             return None, err
@@ -463,6 +467,14 @@ class CaptureNode:
         if one_shot:
             session.finalize()
             rospy.loginfo("one-shot capture saved session=%s frame=%s", session.session_id, frame_id)
+
+        if t0 is not None:
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            rospy.loginfo(
+                "capture save timing frame=%s elapsed_ms=%.1f (encode+write rgb/ir/depth)",
+                frame_id,
+                elapsed_ms,
+            )
 
         return frame_id, None
 
