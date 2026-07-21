@@ -157,7 +157,7 @@ roslaunch mattbot_bringup kaist.launch \
 
 ### Navigation
 
-Watches `/robot_mode` from `localize_and_navigate.py` and records for each mission.
+Watches `/robot_mode` from `localize_and_navigate.py` and records for each mission. Disabled when continuous capture is on.
 
 - **Start:** first transition into a capture-active mode (default: 3, 4, 5, 6, 7, 10, 11)
 - **Stop:** transition to any other mode (e.g. IDLE)
@@ -165,7 +165,7 @@ Watches `/robot_mode` from `localize_and_navigate.py` and records for each missi
 
 ### Person detection
 
-Watches `/detected_objects` from `mattbot_image_detection` while the robot is **not** navigating.
+Watches `/detected_objects` from `mattbot_image_detection` while the robot is **not** navigating. Disabled when continuous capture is on.
 
 - **Start:** first frame with `class_name=="person"` above `person_min_confidence`
 - **Continue:** while person remains visible
@@ -186,6 +186,10 @@ Manual `/capture/*` services remain available. If a manual session is already ac
 | Param | Default | Description |
 |-------|---------|-------------|
 | `~auto_capture_enabled` | `true` | Enable automatic session start/stop |
+| `~continuous_capture_enabled` | `false` | After `/localized`, record indefinitely (disables nav/person) |
+| `~continuous_sample_hz` | `10.0` | Frame rate for continuous sessions |
+| `~require_localized` | `true` | Wait for first `/localized` before continuous start |
+| `~localized_topic` | `/localized` | Localization latch topic |
 | `~nav_sample_hz` | `0.5` | Frame rate during navigation sessions |
 | `~nav_capture_modes` | `[3,4,5,6,7,10,11]` | `/robot_mode` values that trigger capture |
 | `~robot_mode_topic` | `/robot_mode` | Navigation state topic |
@@ -206,6 +210,7 @@ Manual `/capture/*` services remain available. If a manual session is already ac
 | `~spool_dir` | `/workspace/catkin_ws/data/capture_spool` | Local buffer root (persists via catkin_ws bind mount in Docker) |
 | `~jpeg_quality` | `90` | JPEG quality |
 | `~max_spool_bytes` | `5368709120` | Refuse saves when spool exceeds this |
+| `~session_chunk_seconds` | `0` | Rotate active session every N seconds (`0` = off); used by continuous capture |
 | `~image_topic` | `/camera/color/image_raw` | Camera input |
 | `~capture_ir` | `true` | Save IR companion JPEG when IR messages available |
 | `~ir_image_topic` | `/camera/ir/image_raw` | IR input (requires `enable_ir:=capture` at bringup) |
